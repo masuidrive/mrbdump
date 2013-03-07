@@ -1,0 +1,116 @@
+#!/usr/bin/env ruby
+# 
+# dump .mrb file what's mruby's pre-compiled binary file.
+# 
+# License: MIT (c) 2012 masuidrive
+#
+
+
+require 'optparse'
+
+MRB_CODE_SIZE = 4
+
+def parse_record_irep(i, data)
+  record_size, nlocals, nregs, niseq = data[0, 12].unpack("NnnN")
+  puts <<__EOS__
+  IREP record ##{i + 1}:
+       record size: #{record_size}
+           nlocals: #{nlocals}
+             nregs: #{nregs}
+             niseq: #{niseq}
+__EOS__
+  cur = 12
+  iseq = data[cur, niseq * MRB_CODE_SIZE].unpack("N#{niseq}")
+  iseq.each_slice(8) do |iseq8|
+    puts "                    #{iseq8.map{|is| "%08X" % is}.join(' ')}"
+  end
+
+  cur += niseq * MRB_CODE_SIZE
+
+  npools, = data[cur, 4].unpack("N")
+  cur += 4
+  puts "            npools: #{npools}"
+  pools = (1..npools).map do
+    tt, psize = data[cur, 3].unpack("Cn")
+    cur += 3
+    str = data[cur, psize].inspect
+    cur += psize
+    str
+  end
+  puts "                    #{pools.join(', ')}"
+
+  nsyms, = data[cur, 4].unpack("N")
+  cur += 4
+  puts "             nsyms: #{nsyms}"
+  syms = (1..nsyms).map do
+    ssize, = data[cur, 2].unpack("n")
+    cur += 2
+    str = data[cur, ssize].inspect
+    cur += ssize
+    str
+  end
+  puts "                    #{syms.join(', ')}"
+  puts ""
+
+  data = data[record_size..-1]
+end
+
+def parse_section_irep(data)
+  bc_ver, nirep, sirep = data[0, 8].unpack("a4nn")
+  puts <<__EOS__
+  bytecode version: #{bc_ver}
+   numbers of irep: #{nirep}
+        start irep: #{sirep}
+
+__EOS__
+  data = data[8..-1]
+  nirep.times do |i|
+    data = parse_record_irep(i, data)
+  end
+end
+
+opt = OptionParser.new
+argv = opt.parse(ARGV)
+
+argv.each do |mrbfile|
+  puts "Filename: #{mrbfile}"
+
+  data = open(mrbfile).read
+  cur = 0
+
+  bin_header_size = 4 + 4 + 2 + 4 + 4 + 4
+  bin_id, bin_ver, bin_crc, bin_size, compiler_name, compiler_ver = data[0, bin_header_size].unpack("a4a4nNa4a4")
+  cur += bin_header_size
+
+  puts <<__EOS__
+
+Binary header
+            format: #{bin_id}
+    format version: #{bin_ver}
+        binary CRC: #{"%04X" % bin_crc}
+       binary size: #{bin_size}
+     compiler name: #{compiler_name}
+  compiler version: #{compiler_ver}
+__EOS__
+
+  begin
+    sec_id, sec_size = data[cur, 8].unpack("a4N")
+    puts <<__EOS__
+
+#{sec_id} section
+      Section size: #{sec_size}
+__EOS__
+
+    if sec_id == 'IREP'
+      parse_section_irep data[cur + 8, sec_size]
+    elsif sec_id == "END\0"
+      # end of file
+      if bin_size != cur + sec_size
+        puts "Wrong file size"
+      end
+    else
+      puts '** Unknown section **'
+    end
+    cur += sec_size
+  end while cur < bin_size
+end
