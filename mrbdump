@@ -37,7 +37,7 @@ __EOS__
     cur += psize
     str
   end
-  puts "                    #{pools.join(', ')}"
+  puts "                    #{pools.join(', ')}" if npools > 0
 
   nsyms, = data[cur, 4].unpack("N")
   cur += 4
@@ -49,7 +49,7 @@ __EOS__
     cur += ssize
     str
   end
-  puts "                    #{syms.join(', ')}"
+  puts "                    #{syms.join(', ')}" if nsyms > 0
   puts ""
 
   data = data[record_size..-1]
@@ -70,7 +70,7 @@ __EOS__
 end
 
 opt = OptionParser.new
-argv = opt.parse(ARGV)
+argv = opt.parse(ARGV).uniq
 
 argv.each do |mrbfile|
   puts "Filename: #{mrbfile}"
@@ -91,12 +91,12 @@ Binary header
        binary size: #{bin_size}
      compiler name: #{compiler_name}
   compiler version: #{compiler_ver}
+
 __EOS__
 
   begin
     sec_id, sec_size = data[cur, 8].unpack("a4N")
     puts <<__EOS__
-
 #{sec_id} section
       Section size: #{sec_size}
 __EOS__
@@ -108,6 +108,8 @@ __EOS__
       if bin_size != cur + sec_size
         puts "Wrong file size"
       end
+      puts ""
+      puts "======"
     else
       puts '** Unknown section **'
     end
